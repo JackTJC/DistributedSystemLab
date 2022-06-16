@@ -6,8 +6,10 @@ package mr
 // remember to capitalize all names.
 //
 
-import "os"
-import "strconv"
+import (
+	"os"
+	"strconv"
+)
 
 //
 // example to show how to declare the arguments
@@ -23,7 +25,41 @@ type ExampleReply struct {
 }
 
 // Add your RPC definitions here.
+type JobType int8
 
+const (
+	MAP_JOB_TYPE    JobType = 1
+	REDUCE_JOB_TYPE JobType = 2
+)
+
+const stdlog = false
+
+func (jobType JobType) String() string {
+	switch jobType {
+	case MAP_JOB_TYPE:
+		return "MapJob"
+	case REDUCE_JOB_TYPE:
+		return "ReduceJob"
+	default:
+		return "unknown"
+	}
+}
+
+type GetJobArgs struct {
+}
+
+type GetJobReply struct {
+	Job  *jobDetail
+	Done bool
+}
+
+type SubmitJobArgs struct {
+	JobType JobType
+	SrcFile string
+	File    string
+}
+type SubmitJobReply struct {
+}
 
 // Cook up a unique-ish UNIX-domain socket name
 // in /var/tmp, for the coordinator.
