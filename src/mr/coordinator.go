@@ -15,7 +15,7 @@ import (
 type Coordinator struct {
 	// Your definitions here.
 	nReduce       int
-	mapCh         chan *jobDetail //map任务管道，初始和重拾的map任务都放入其中
+	mapCh         chan *jobDetail //map任务管道，初始和重试的map任务都放入其中
 	reduceCh      chan *jobDetail //reduce任务管道
 	mapDoneMap    sync.Map        //记录map任务是否完成
 	reduceDoneMap sync.Map        //同上
@@ -36,9 +36,8 @@ func (c *Coordinator) GetJob(args *GetJobArgs, reply *GetJobReply) error {
 	defer func() {
 		log.Printf("get job reply: type=%v, file=%v, done=%v", reply.Job.Type, reply.Job.File, reply.Done)
 	}()
-	// 所有任务已经完成，直接返回
 	reply.Job = &jobDetail{}
-	if c.Done() {
+	if c.Done() { // 所有任务已经完成，直接返回
 		reply.Done = true
 		return nil
 	}
@@ -97,11 +96,11 @@ func (c *Coordinator) SubmitJob(args *SubmitJobArgs, reply *SubmitJobReply) erro
 
 // crash处理逻辑
 // 对于一个任务，在下发后每隔d时间检查其是否完成，没有完成则重新下发
-func (c *Coordinator) jobChecker(file string, idx int, jonType JobType, d time.Duration) {
+func (c *Coordinator) jobChecker(file string, idx int, jobType JobType, d time.Duration) {
 	for {
 		time.Sleep(d)
 		var done bool
-		switch jonType {
+		switch jobType {
 		case MAP_JOB_TYPE:
 			v, _ := c.mapDoneMap.Load(file)
 			done = v.(bool)
@@ -112,7 +111,7 @@ func (c *Coordinator) jobChecker(file string, idx int, jonType JobType, d time.D
 			return
 		}
 		if !done {
-			switch jonType {
+			switch jobType {
 			case MAP_JOB_TYPE:
 				c.mapCh <- &jobDetail{file, idx, MAP_JOB_TYPE}
 				log.Printf("job crashed, file: %v, type: %v, idx: %v", file, MAP_JOB_TYPE, idx)
@@ -195,6 +194,7 @@ func (c *Coordinator) Done() bool {
 	return c.mapDone() && c.reduceDone()
 }
 
+// 检测map阶段是否完成
 func (c *Coordinator) mapDone() (mapDone bool) {
 	mapDone = true
 	c.mapDoneMap.Range(func(file, finish interface{}) bool {
@@ -207,6 +207,7 @@ func (c *Coordinator) mapDone() (mapDone bool) {
 	return
 }
 
+// 检测reduce阶段是否完成
 func (c *Coordinator) reduceDone() (reduceDone bool) {
 	reduceDone = true
 	cnt := 0

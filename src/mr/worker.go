@@ -49,7 +49,7 @@ func Worker(mapf func(string, string) []KeyValue,
 		log.SetOutput(f)
 	}
 	log.Printf("running worker, pid:%d ...\n", os.Getpid())
-	// 不断获取任务，知道coordinator返回true
+	// 不断获取任务，直到coordinator的Done返回true
 	for {
 		jd, done := CallGetJob()
 		if done {
