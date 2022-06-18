@@ -51,11 +51,13 @@ func Worker(mapf func(string, string) []KeyValue,
 	log.Printf("running worker, pid:%d ...\n", os.Getpid())
 	// 不断获取任务，直到coordinator的Done返回true
 	for {
+		// 不断请求任务，直到Done为true
 		jd, done := CallGetJob()
 		if done {
 			log.Println("coordinator done, worker: ", os.Getpid(), "exited")
 			return
 		}
+		// 根据任务类型，执行不同逻辑
 		switch jd.Type {
 		case MAP_JOB_TYPE:
 			log.Printf("worker: %d, run map job: file=%s", os.Getpid(), jd.File)
@@ -66,7 +68,7 @@ func Worker(mapf func(string, string) []KeyValue,
 		default:
 			log.Println("unknown job type")
 		}
-		time.Sleep(time.Second)
+		time.Sleep(time.Second) // 根据实验的guideline，这里应该间隔一秒
 	}
 
 	// uncomment to send the Example RPC to the coordinator.

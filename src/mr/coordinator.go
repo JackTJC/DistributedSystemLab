@@ -23,12 +23,6 @@ type Coordinator struct {
 	segmentLock   []sync.Mutex    //reducesTasks的分段锁
 }
 
-type jobDetail struct {
-	File   string
-	Number int
-	Type   JobType
-}
-
 // Your code here -- RPC handlers for the worker to call.
 
 // 获取任务
@@ -44,11 +38,11 @@ func (c *Coordinator) GetJob(args *GetJobArgs, reply *GetJobReply) error {
 	select {
 	case jd := <-c.mapCh:
 		reply.Job = jd
-		go c.jobChecker(jd.File, jd.Number, jd.Type, 10*time.Second)
+		go c.jobChecker(jd, 10*time.Second)
 		return nil
 	case jd := <-c.reduceCh:
 		reply.Job = jd
-		go c.jobChecker(jd.File, jd.Number, jd.Type, 10*time.Second)
+		go c.jobChecker(jd, 10*time.Second)
 		return nil
 	default:
 		log.Println("no job currently.")
@@ -83,12 +77,14 @@ func (c *Coordinator) SubmitJob(args *SubmitJobArgs, reply *SubmitJobReply) erro
 			c.reduceTasks[idx] = append(c.reduceTasks[idx], kv)
 			c.segmentLock[idx].Unlock()
 		}
+		// 标记已完成
 		c.mapDoneMap.Store(args.SrcFile, true)
 	case REDUCE_JOB_TYPE:
 		v2, _ := c.reduceDoneMap.Load(args.SrcFile)
 		if v2.(bool) {
 			return nil
 		}
+		// 标记已完成
 		c.reduceDoneMap.Store(args.SrcFile, true)
 	}
 	return nil
@@ -96,28 +92,28 @@ func (c *Coordinator) SubmitJob(args *SubmitJobArgs, reply *SubmitJobReply) erro
 
 // crash处理逻辑
 // 对于一个任务，在下发后每隔d时间检查其是否完成，没有完成则重新下发
-func (c *Coordinator) jobChecker(file string, idx int, jobType JobType, d time.Duration) {
+func (c *Coordinator) jobChecker(jd *jobDetail, d time.Duration) {
 	for {
 		time.Sleep(d)
 		var done bool
-		switch jobType {
+		switch jd.Type {
 		case MAP_JOB_TYPE:
-			v, _ := c.mapDoneMap.Load(file)
+			v, _ := c.mapDoneMap.Load(jd.File)
 			done = v.(bool)
 		case REDUCE_JOB_TYPE:
-			v, _ := c.reduceDoneMap.Load(file)
+			v, _ := c.reduceDoneMap.Load(jd.File)
 			done = v.(bool)
 		default:
 			return
 		}
 		if !done {
-			switch jobType {
+			switch jd.Type {
 			case MAP_JOB_TYPE:
-				c.mapCh <- &jobDetail{file, idx, MAP_JOB_TYPE}
-				log.Printf("job crashed, file: %v, type: %v, idx: %v", file, MAP_JOB_TYPE, idx)
+				c.mapCh <- jd
+				log.Printf("job crashed, file: %v, type: %v, idx: %v", jd.File, MAP_JOB_TYPE, jd.Number)
 			case REDUCE_JOB_TYPE:
-				c.reduceCh <- &jobDetail{file, idx, REDUCE_JOB_TYPE}
-				log.Printf("job crashed, file: %v, type: %v, idx: %v", file, REDUCE_JOB_TYPE, idx)
+				c.reduceCh <- jd
+				log.Printf("job crashed, file: %v, type: %v, idx: %v", jd.File, REDUCE_JOB_TYPE, jd.Number)
 			default:
 				log.Println("unknown job type")
 			}
