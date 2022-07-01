@@ -53,9 +53,9 @@ type ApplyMsg struct {
 }
 
 type LogEntry struct {
-	Index   int
-	Term    int32
-	Command interface{}
+	Index int
+	Term  int32
+	Cmd   interface{}
 }
 
 type roleType uint8
@@ -80,7 +80,7 @@ func (v roleType) String() string {
 }
 
 func (ele *LogEntry) String() string {
-	return fmt.Sprintf("{Term:%v,Idx:%v,Command:%v} ", ele.Term, ele.Index, cmd2Str(ele.Command))
+	return fmt.Sprintf("{Term:%v,Idx:%v,Command:%v} ", ele.Term, ele.Index, cmd2Str(ele.Cmd))
 }
 
 //
@@ -106,14 +106,14 @@ type Raft struct {
 
 	//  each entry contains command for state machine,
 	// and term when entry was received by leader (first index is 1)
-	log          []*LogEntry
-	lastLogIndex int32
+	log        []*LogEntry
+	lastLogIdx int32
 
-	commitIndex int32
+	cmdIdx      int32
 	lastApplied int
 
-	nextIndex  []int
-	matchIndex []int
+	nxtIdx   []int
+	matchIdx []int
 }
 
 func (rf *Raft) setRole(role roleType) {
@@ -149,15 +149,15 @@ func (rf *Raft) majorityNum() int32 {
 	return int32(len(rf.peers)/2 + 1)
 }
 func (rf *Raft) getLastLogIdx() int {
-	return int(atomic.LoadInt32(&rf.lastLogIndex))
+	return int(atomic.LoadInt32(&rf.lastLogIdx))
 }
 func (rf *Raft) setLastLogIdx(idx int) {
-	atomic.StoreInt32(&rf.lastLogIndex, int32(idx))
+	atomic.StoreInt32(&rf.lastLogIdx, int32(idx))
 }
 func (rf *Raft) getLastLogTerm() int32 {
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
-	lastLogIdx := atomic.LoadInt32(&rf.lastLogIndex)
+	lastLogIdx := atomic.LoadInt32(&rf.lastLogIdx)
 	return rf.log[lastLogIdx].Term
 }
 func (rf *Raft) setLogAt(idx int, entry *LogEntry) {
@@ -168,7 +168,7 @@ func (rf *Raft) setLogAt(idx int, entry *LogEntry) {
 func (rf *Raft) appendLog(entry *LogEntry) {
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
-	rf.log[atomic.AddInt32(&rf.lastLogIndex, 1)] = entry
+	rf.log[atomic.AddInt32(&rf.lastLogIdx, 1)] = entry
 }
 func (rf *Raft) subLogEntry(i, j int) []*LogEntry {
 	rf.mu.Lock()
@@ -180,45 +180,45 @@ func (rf *Raft) getLogEntry(idx int) *LogEntry {
 	defer rf.mu.Unlock()
 	return rf.log[idx]
 }
-func (rf *Raft) setNextIndex(at, val int) {
+func (rf *Raft) setNxtIdx(at, val int) {
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
-	rf.nextIndex[at] = val
+	rf.nxtIdx[at] = val
 }
-func (rf *Raft) nextIndexAt(idx int) int {
+func (rf *Raft) nxtIdxAt(idx int) int {
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
-	return rf.nextIndex[idx]
+	return rf.nxtIdx[idx]
 }
-func (rf *Raft) getNextIndex() []int {
+func (rf *Raft) getNxtIdx() []int {
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
-	dup := make([]int, len(rf.nextIndex))
-	copy(dup, rf.nextIndex)
+	dup := make([]int, len(rf.nxtIdx))
+	copy(dup, rf.nxtIdx)
 	return dup
 }
-func (rf *Raft) setMatchIndex(at, val int) {
+func (rf *Raft) setMatchIdx(at, val int) {
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
-	rf.matchIndex[at] = val
+	rf.matchIdx[at] = val
 }
-func (rf *Raft) matchIndexAt(at int) int {
+func (rf *Raft) matchIdxAt(at int) int {
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
-	return rf.matchIndex[at]
+	return rf.matchIdx[at]
 }
-func (rf *Raft) getMatchIndex() []int {
+func (rf *Raft) getMatchIdx() []int {
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
-	dup := make([]int, len(rf.matchIndex))
-	copy(dup, rf.matchIndex)
+	dup := make([]int, len(rf.matchIdx))
+	copy(dup, rf.matchIdx)
 	return dup
 }
 func (rf *Raft) setCmtIdx(idx int) {
-	atomic.StoreInt32(&rf.commitIndex, int32(idx))
+	atomic.StoreInt32(&rf.cmdIdx, int32(idx))
 }
 func (rf *Raft) getCmtIdx() int {
-	return int(atomic.LoadInt32(&rf.commitIndex))
+	return int(atomic.LoadInt32(&rf.cmdIdx))
 }
 func (rf *Raft) debugf(format string, a ...interface{}) {
 	prefix := fmt.Sprintf("[node:%v][term:%v][role:%v][lastLogIdx:%v][lastLogTerm:%v]",
@@ -481,9 +481,9 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 	}
 	rf.debugf("append %v", cmd2Str(command))
 	entry := &LogEntry{
-		Term:    rf.getTerm(),
-		Command: command,
-		Index:   rf.getLastLogIdx() + 1,
+		Term:  rf.getTerm(),
+		Cmd:   command,
+		Index: rf.getLastLogIdx() + 1,
 	}
 	rf.appendLog(entry)
 	index = rf.getLastLogIdx()
@@ -524,7 +524,7 @@ func (rf *Raft) ticker() {
 			entry := rf.getLogEntry(rf.lastApplied)
 			rf.debugf("apply %v", entry)
 			rf.applyCh <- ApplyMsg{
-				Command:      entry.Command,
+				Command:      entry.Cmd,
 				CommandIndex: entry.Index,
 				CommandValid: true,
 			}
@@ -588,7 +588,7 @@ func (rf *Raft) election() {
 		rf.debugf("become leader")
 		rf.setRole(leader)
 		for server := 0; server < len(rf.peers); server++ {
-			rf.setNextIndex(server, rf.getLastLogIdx()+1)
+			rf.setNxtIdx(server, rf.getLastLogIdx()+1)
 		}
 	case <-rf.heartbeat:
 		rf.setRole(follower)
@@ -618,12 +618,14 @@ func (rf *Raft) sendHeartbeat() {
 }
 func (rf *Raft) duplicateLog() {
 	for server := range rf.peers {
+		lastLogIdx := rf.getLastLogIdx()
 		if server == rf.me {
+			rf.setMatchIdx(server, lastLogIdx)
+			rf.setNxtIdx(server, lastLogIdx)
 			continue
 		}
 		go func(server int) {
-			lastLogIdx := rf.getLastLogIdx()
-			nextIdxAtServer := rf.nextIndexAt(server)
+			nextIdxAtServer := rf.nxtIdxAt(server)
 			if lastLogIdx < nextIdxAtServer {
 				return
 			}
@@ -641,11 +643,15 @@ func (rf *Raft) duplicateLog() {
 				callSucc = rf.sendAppendEntries(server, args, reply)
 			}
 			if !reply.Success { // nextIndex 自减并重试
-				rf.setNextIndex(server, nextIdxAtServer-1)
+				if nextIdxAtServer-1 < 1 { // nextIndex最小值控制在1
+					return
+				}
+				rf.setNxtIdx(server, nextIdxAtServer-1)
+				return
 			}
 			rf.debugf("send %v to %v success", args.Entries, server)
-			rf.setMatchIndex(server, lastLogIdx)
-			rf.setNextIndex(server, lastLogIdx+1)
+			rf.setMatchIdx(server, lastLogIdx)
+			rf.setNxtIdx(server, lastLogIdx+1)
 		}(server)
 	}
 }
@@ -657,7 +663,7 @@ func (rf *Raft) commitLog() {
 			break
 		}
 		var cnt int32
-		for _, matchIdx := range rf.getMatchIndex() {
+		for _, matchIdx := range rf.getMatchIdx() {
 			if matchIdx >= N {
 				cnt++
 			}
@@ -694,12 +700,12 @@ func Make(peers []*labrpc.ClientEnd, me int,
 	rf.heartbeat = make(chan struct{})
 	rf.applyCh = applyCh
 	rf.setRole(follower)
-	rf.commitIndex = 0
+	rf.cmdIdx = 0
 	rf.lastApplied = 0
 	rf.log = make([]*LogEntry, 128)
 	rf.log[0] = &LogEntry{}
-	rf.matchIndex = make([]int, peerCnt)
-	rf.nextIndex = make([]int, peerCnt)
+	rf.matchIdx = make([]int, peerCnt)
+	rf.nxtIdx = make([]int, peerCnt)
 
 	// initialize from state persisted before a crash
 	rf.readPersist(persister.ReadRaftState())

@@ -8,7 +8,7 @@ import (
 )
 
 // Debugging
-const Debug = true
+const Debug = false
 
 func DPrintf(format string, a ...interface{}) (n int, err error) {
 	if Debug {
@@ -24,9 +24,9 @@ func randomElectionTimeout() time.Duration {
 
 func min(a, b int) int {
 	if a > b {
-		return a
+		return b
 	}
-	return b
+	return a
 }
 
 func cmd2Str(cmd interface{}) string {
